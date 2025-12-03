@@ -562,29 +562,29 @@ export const UserMenu: React.FC = () => {
           <div className='my-1 border-t border-gray-200 dark:border-gray-700'></div>
 
           {/* 版本信息 */}
-          <button
-            onClick={() => {
-              setIsVersionPanelOpen(true);
-              handleCloseMenu();
-            }}
-            className='w-full px-3 py-2 text-center flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-xs'
-          >
-            <div className='flex items-center gap-1'>
-              <span className='font-mono'>v{CURRENT_VERSION}</span>
-              {!isChecking &&
-                updateStatus &&
-                updateStatus !== UpdateStatus.FETCH_FAILED && (
-                  <div
-                    className={`w-2 h-2 rounded-full -translate-y-2 ${updateStatus === UpdateStatus.HAS_UPDATE
-                      ? 'bg-yellow-500'
-                      : updateStatus === UpdateStatus.NO_UPDATE
-                        ? 'bg-green-400'
-                        : ''
-                      }`}
-                  ></div>
-                )}
-            </div>
-          </button>
+          {/*<button*/}
+          {/*  onClick={() => {*/}
+          {/*    setIsVersionPanelOpen(true);*/}
+          {/*    handleCloseMenu();*/}
+          {/*  }}*/}
+          {/*  className='w-full px-3 py-2 text-center flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-xs'*/}
+          {/*>*/}
+          {/*  <div className='flex items-center gap-1'>*/}
+          {/*    <span className='font-mono'>v{CURRENT_VERSION}</span>*/}
+          {/*    {!isChecking &&*/}
+          {/*      updateStatus &&*/}
+          {/*      updateStatus !== UpdateStatus.FETCH_FAILED && (*/}
+          {/*        <div*/}
+          {/*          className={`w-2 h-2 rounded-full -translate-y-2 ${updateStatus === UpdateStatus.HAS_UPDATE*/}
+          {/*            ? 'bg-yellow-500'*/}
+          {/*            : updateStatus === UpdateStatus.NO_UPDATE*/}
+          {/*              ? 'bg-green-400'*/}
+          {/*              : ''*/}
+          {/*            }`}*/}
+          {/*        ></div>*/}
+          {/*      )}*/}
+          {/*  </div>*/}
+          {/*</button>*/}
         </div>
       </div>
     </>
