@@ -5,9 +5,12 @@
 import {
   Check,
   ChevronDown,
+  Copy,
+  Download,
   ExternalLink,
   KeyRound,
   LogOut,
+  Rss,
   Settings,
   Shield,
   User,
@@ -18,10 +21,13 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { getAuthInfoFromBrowserCookie } from '@/lib/auth';
+import { clearAllDanmakuCache } from '@/lib/danmaku/api';
 import { CURRENT_VERSION } from '@/lib/version';
-import { checkForUpdates, UpdateStatus } from '@/lib/version_check';
+import { UpdateStatus } from '@/lib/version_check';
 
+import { useVersionCheck } from './VersionCheckProvider';
 import { VersionPanel } from './VersionPanel';
+import { OfflineDownloadPanel } from './OfflineDownloadPanel';
 
 interface AuthInfo {
   username?: string;
@@ -30,17 +36,26 @@ interface AuthInfo {
 
 export const UserMenu: React.FC = () => {
   const router = useRouter();
+  const { updateStatus, isChecking } = useVersionCheck();
   const [isOpen, setIsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isSubscribeOpen, setIsSubscribeOpen] = useState(false);
   const [isVersionPanelOpen, setIsVersionPanelOpen] = useState(false);
+  const [isOfflineDownloadPanelOpen, setIsOfflineDownloadPanelOpen] = useState(false);
   const [authInfo, setAuthInfo] = useState<AuthInfo | null>(null);
   const [storageType, setStorageType] = useState<string>('localstorage');
   const [mounted, setMounted] = useState(false);
 
+  // 订阅相关状态
+  const [subscribeEnabled, setSubscribeEnabled] = useState(false);
+  const [subscribeUrl, setSubscribeUrl] = useState('');
+  const [copySuccess, setCopySuccess] = useState(false);
+  const [adFilterEnabled, setAdFilterEnabled] = useState(true); // 去广告开关，默认开启
+
   // Body 滚动锁定 - 使用 overflow 方式避免布局问题
   useEffect(() => {
-    if (isSettingsOpen || isChangePasswordOpen) {
+    if (isSettingsOpen || isChangePasswordOpen || isSubscribeOpen || isOfflineDownloadPanelOpen) {
       const body = document.body;
       const html = document.documentElement;
 
@@ -59,7 +74,7 @@ export const UserMenu: React.FC = () => {
         html.style.overflow = originalHtmlOverflow;
       };
     }
-  }, [isSettingsOpen, isChangePasswordOpen]);
+  }, [isSettingsOpen, isChangePasswordOpen, isSubscribeOpen, isOfflineDownloadPanelOpen]);
 
   // 设置相关状态
   const [defaultAggregateSearch, setDefaultAggregateSearch] = useState(true);
@@ -105,14 +120,36 @@ export const UserMenu: React.FC = () => {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordError, setPasswordError] = useState('');
 
-  // 版本检查相关状态
-  const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
-  const [isChecking, setIsChecking] = useState(true);
+  // 清除弹幕缓存相关状态
+  const [isClearingCache, setIsClearingCache] = useState(false);
+  const [clearCacheMessage, setClearCacheMessage] = useState<string | null>(null);
 
   // 确保组件已挂载
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // 从运行时配置读取订阅是否启用
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const enabled = (window as any).RUNTIME_CONFIG?.ENABLE_TVBOX_SUBSCRIBE || false;
+      setSubscribeEnabled(enabled);
+    }
+  }, []);
+
+  // 懒加载订阅 URL - 只在打开订阅面板时请求
+  const fetchSubscribeUrl = async () => {
+    try {
+      const currentOrigin = window.location.origin;
+      const response = await fetch(`/api/tvbox/config?origin=${encodeURIComponent(currentOrigin)}&adFilter=${adFilterEnabled}`);
+      if (response.ok) {
+        const data = await response.json();
+        setSubscribeUrl(data.url);
+      }
+    } catch (error) {
+      console.error('获取订阅URL失败:', error);
+    }
+  };
 
   // 获取认证信息和存储类型
   useEffect(() => {
@@ -198,22 +235,6 @@ export const UserMenu: React.FC = () => {
     }
   }, []);
 
-  // 版本检查
-  useEffect(() => {
-    const checkUpdate = async () => {
-      try {
-        const status = await checkForUpdates();
-        setUpdateStatus(status);
-      } catch (error) {
-        console.warn('版本检查失败:', error);
-      } finally {
-        setIsChecking(false);
-      }
-    };
-
-    checkUpdate();
-  }, []);
-
   // 点击外部区域关闭下拉框
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -286,6 +307,37 @@ export const UserMenu: React.FC = () => {
     setNewPassword('');
     setConfirmPassword('');
     setPasswordError('');
+  };
+
+  const handleSubscribe = async () => {
+    setIsOpen(false);
+    setIsSubscribeOpen(true);
+    setCopySuccess(false);
+    // 懒加载:打开面板时才请求订阅URL
+    await fetchSubscribeUrl();
+  };
+
+  const handleCloseSubscribe = () => {
+    setIsSubscribeOpen(false);
+    setCopySuccess(false);
+  };
+
+  const handleAdFilterToggle = async (checked: boolean) => {
+    setAdFilterEnabled(checked);
+    // 当去广告开关改变时,重新获取订阅URL
+    await fetchSubscribeUrl();
+  };
+
+  const handleCopySubscribeUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(subscribeUrl);
+      setCopySuccess(true);
+      setTimeout(() => {
+        setCopySuccess(false);
+      }, 2000);
+    } catch (error) {
+      console.error('复制失败:', error);
+    }
   };
 
   const handleSubmitChangePassword = async () => {
@@ -450,9 +502,42 @@ export const UserMenu: React.FC = () => {
     }
   };
 
+  // 清除弹幕缓存
+  const handleClearDanmakuCache = async () => {
+    setIsClearingCache(true);
+    setClearCacheMessage(null);
+
+    try {
+      await clearAllDanmakuCache();
+      setClearCacheMessage('弹幕缓存已清除成功！');
+      console.log('弹幕缓存已清除');
+
+      // 3秒后自动清除提示
+      setTimeout(() => {
+        setClearCacheMessage(null);
+      }, 3000);
+    } catch (error) {
+      console.error('清除弹幕缓存失败:', error);
+      setClearCacheMessage('清除失败，请重试');
+
+      // 3秒后自动清除提示
+      setTimeout(() => {
+        setClearCacheMessage(null);
+      }, 3000);
+    } finally {
+      setIsClearingCache(false);
+    }
+  };
+
   // 检查是否显示管理面板按钮
   const showAdminPanel =
     authInfo?.role === 'owner' || authInfo?.role === 'admin';
+
+  // 检查是否显示离线下载按钮
+  const showOfflineDownload =
+    (authInfo?.role === 'owner' || authInfo?.role === 'admin') &&
+    typeof window !== 'undefined' &&
+    process.env.NEXT_PUBLIC_ENABLE_OFFLINE_DOWNLOAD === 'true';
 
   // 检查是否显示修改密码按钮
   const showChangePassword =
@@ -535,6 +620,20 @@ export const UserMenu: React.FC = () => {
             </button>
           )}
 
+          {/* 离线下载按钮 */}
+          {showOfflineDownload && (
+            <button
+              onClick={() => {
+                setIsOfflineDownloadPanelOpen(true);
+                setIsOpen(false);
+              }}
+              className='w-full px-3 py-2 text-left flex items-center gap-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm'
+            >
+              <Download className='w-4 h-4 text-gray-500 dark:text-gray-400' />
+              <span className='font-medium'>离线下载</span>
+            </button>
+          )}
+
           {/* 修改密码按钮 */}
           {showChangePassword && (
             <button
@@ -543,6 +642,17 @@ export const UserMenu: React.FC = () => {
             >
               <KeyRound className='w-4 h-4 text-gray-500 dark:text-gray-400' />
               <span className='font-medium'>修改密码</span>
+            </button>
+          )}
+
+          {/* 订阅按钮 */}
+          {subscribeEnabled && (
+            <button
+              onClick={handleSubscribe}
+              className='w-full px-3 py-2 text-left flex items-center gap-2.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm'
+            >
+              <Rss className='w-4 h-4 text-gray-500 dark:text-gray-400' />
+              <span className='font-medium'>订阅</span>
             </button>
           )}
 
@@ -954,12 +1064,164 @@ export const UserMenu: React.FC = () => {
                 </div>
               </label>
             </div>
+
+            {/* 分割线 */}
+            <div className='border-t border-gray-200 dark:border-gray-700'></div>
+
+            {/* 清除弹幕缓存 */}
+            <div className='space-y-3'>
+              <div>
+                <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                  弹幕缓存管理
+                </h4>
+                <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                  清除所有已缓存的弹幕数据
+                </p>
+              </div>
+              <button
+                onClick={handleClearDanmakuCache}
+                disabled={isClearingCache}
+                className='w-full px-4 py-2.5 bg-red-500 hover:bg-red-600 disabled:bg-red-400 dark:bg-red-600 dark:hover:bg-red-700 dark:disabled:bg-red-500 text-white text-sm font-medium rounded-lg transition-colors duration-200 shadow-sm hover:shadow-md disabled:cursor-not-allowed flex items-center justify-center gap-2'
+              >
+                {isClearingCache ? (
+                  <>
+                    <div className='w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin'></div>
+                    <span>清除中...</span>
+                  </>
+                ) : (
+                  <>
+                    <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16' />
+                    </svg>
+                    <span>清除弹幕缓存</span>
+                  </>
+                )}
+              </button>
+
+              {/* 成功/失败提示 */}
+              {clearCacheMessage && (
+                <div className={`text-sm p-3 rounded-lg border ${
+                  clearCacheMessage.includes('成功')
+                    ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300'
+                    : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
+                }`}>
+                  {clearCacheMessage}
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 底部说明 */}
           <div className='mt-6 pt-4 border-t border-gray-200 dark:border-gray-700'>
             <p className='text-xs text-gray-500 dark:text-gray-400 text-center'>
               这些设置保存在本地浏览器中
+            </p>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  // 订阅面板内容
+  const subscribePanel = (
+    <>
+      {/* 背景遮罩 */}
+      <div
+        className='fixed inset-0 bg-black/50 backdrop-blur-sm z-[1000]'
+        onClick={handleCloseSubscribe}
+        onTouchMove={(e) => {
+          e.preventDefault();
+        }}
+        onWheel={(e) => {
+          e.preventDefault();
+        }}
+        style={{
+          touchAction: 'none',
+        }}
+      />
+
+      {/* 订阅面板 */}
+      <div
+        className='fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md bg-white dark:bg-gray-900 rounded-xl shadow-xl z-[1001] overflow-hidden'
+      >
+        <div
+          className='h-full p-6'
+          data-panel-content
+          onTouchMove={(e) => {
+            e.stopPropagation();
+          }}
+          style={{
+            touchAction: 'auto',
+          }}
+        >
+          {/* 标题栏 */}
+          <div className='flex items-center justify-between mb-6'>
+            <h3 className='text-xl font-bold text-gray-800 dark:text-gray-200'>
+              订阅
+            </h3>
+            <button
+              onClick={handleCloseSubscribe}
+              className='w-8 h-8 p-1 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors'
+              aria-label='Close'
+            >
+              <X className='w-full h-full' />
+            </button>
+          </div>
+
+          {/* 内容 */}
+          <div className='space-y-4'>
+            {/* 去广告开关 */}
+            <div className='flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg'>
+              <div>
+                <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+                  去广告
+                </h4>
+                <p className='text-xs text-gray-500 dark:text-gray-400 mt-1'>
+                  开启后自动过滤视频广告
+                </p>
+              </div>
+              <label className='flex items-center cursor-pointer'>
+                <div className='relative'>
+                  <input
+                    type='checkbox'
+                    className='sr-only peer'
+                    checked={adFilterEnabled}
+                    onChange={(e) => handleAdFilterToggle(e.target.checked)}
+                  />
+                  <div className='w-11 h-6 bg-gray-300 rounded-full peer-checked:bg-green-500 transition-colors dark:bg-gray-600'></div>
+                  <div className='absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform peer-checked:translate-x-5'></div>
+                </div>
+              </label>
+            </div>
+
+            {/* TVBOX订阅 */}
+            <div>
+              <h4 className='text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
+                TVBOX订阅
+              </h4>
+              <div className='flex gap-2'>
+                <input
+                  type='text'
+                  className='flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md text-sm bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-not-allowed'
+                  value={subscribeUrl}
+                  disabled
+                  readOnly
+                />
+                <button
+                  onClick={handleCopySubscribeUrl}
+                  className='px-4 py-2 bg-green-600 hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600 text-white text-sm font-medium rounded-md transition-colors flex items-center gap-2'
+                >
+                  <Copy className='w-4 h-4' />
+                  {copySuccess ? '已复制' : '复制'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 底部说明 */}
+          <div className='mt-6 pt-4 border-t border-gray-200 dark:border-gray-700'>
+            <p className='text-xs text-gray-500 dark:text-gray-400 text-center'>
+              将订阅链接复制到TVBOX应用中使用
             </p>
           </div>
         </div>
@@ -1112,10 +1374,21 @@ export const UserMenu: React.FC = () => {
         mounted &&
         createPortal(changePasswordPanel, document.body)}
 
+      {/* 使用 Portal 将订阅面板渲染到 document.body */}
+      {isSubscribeOpen &&
+        mounted &&
+        createPortal(subscribePanel, document.body)}
+
       {/* 版本面板 */}
       <VersionPanel
         isOpen={isVersionPanelOpen}
         onClose={() => setIsVersionPanelOpen(false)}
+      />
+
+      {/* 离线下载面板 */}
+      <OfflineDownloadPanel
+        isOpen={isOfflineDownloadPanelOpen}
+        onClose={() => setIsOfflineDownloadPanelOpen(false)}
       />
     </>
   );

@@ -10,6 +10,44 @@ import type {
   DanmakuSettings,
 } from './types';
 
+import {
+  getDanmakuFromCache,
+  saveDanmakuToCache,
+  clearExpiredDanmakuCache,
+  clearAllDanmakuCache,
+  clearDanmakuCache,
+  getDanmakuCacheStats,
+} from './cache';
+
+// 初始化弹幕模块（清理过期缓存）
+let _cacheCleanupInitialized = false;
+
+export function initDanmakuModule(): void {
+  if (typeof window === 'undefined') return;
+  if (_cacheCleanupInitialized) return;
+
+  _cacheCleanupInitialized = true;
+
+  // 启动时清理一次过期缓存
+  clearExpiredDanmakuCache()
+    .then((count) => {
+      if (count > 0) {
+        console.log(`[弹幕缓存] 启动清理: 已删除 ${count} 个过期缓存`);
+      }
+    })
+    .catch((error) => {
+      console.error('[弹幕缓存] 清理失败:', error);
+    });
+}
+
+// 导出缓存管理函数
+export {
+  clearAllDanmakuCache,
+  clearDanmakuCache,
+  clearExpiredDanmakuCache,
+  getDanmakuCacheStats,
+};
+
 // 搜索动漫
 export async function searchAnime(
   keyword: string
@@ -19,7 +57,7 @@ export async function searchAnime(
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error('弹幕服务器连接异常，请检查你的设置');
     }
 
     const data = (await response.json()) as DanmakuSearchResponse;
@@ -52,7 +90,7 @@ export async function matchAnime(
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error('弹幕服务器连接异常，请检查你的设置');
     }
 
     const data = (await response.json()) as DanmakuMatchResponse;
@@ -78,7 +116,7 @@ export async function getEpisodes(
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error('弹幕服务器连接异常，请检查你的设置');
     }
 
     const data = (await response.json()) as DanmakuEpisodesResponse;
@@ -98,20 +136,42 @@ export async function getEpisodes(
   }
 }
 
-// 通过剧集 ID 获取弹幕
+// 通过剧集 ID 获取弹幕（优先从缓存读取）
 export async function getDanmakuById(
   episodeId: number
 ): Promise<DanmakuComment[]> {
   try {
+    // 1. 先尝试从缓存读取
+    const cachedComments = await getDanmakuFromCache(episodeId);
+    if (cachedComments) {
+      console.log(`[弹幕缓存] 使用缓存: episodeId=${episodeId}, 数量=${cachedComments.length}`);
+      return cachedComments;
+    }
+
+    // 2. 缓存未命中，从 API 获取
+    console.log(`[弹幕缓存] 缓存未命中，从 API 获取: episodeId=${episodeId}`);
     const url = `/api/danmaku/comment?episodeId=${episodeId}`;
     const response = await fetch(url);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error('弹幕服务器连接异常，请检查你的设置');
     }
 
     const data = (await response.json()) as DanmakuCommentsResponse;
-    return data.comments || [];
+    const comments = data.comments || [];
+
+    // 3. 保存到缓存
+    if (comments.length > 0) {
+      try {
+        await saveDanmakuToCache(episodeId, comments);
+        console.log(`[弹幕缓存] 已缓存: episodeId=${episodeId}, 数量=${comments.length}`);
+      } catch (cacheError) {
+        console.error('[弹幕缓存] 保存缓存失败:', cacheError);
+        // 缓存失败不影响返回结果
+      }
+    }
+
+    return comments;
   } catch (error) {
     console.error('获取弹幕失败:', error);
     return [];
@@ -125,7 +185,7 @@ export async function getDanmakuByUrl(url: string): Promise<DanmakuComment[]> {
     const response = await fetch(apiUrl);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error('弹幕服务器连接异常，请检查你的设置');
     }
 
     const data = (await response.json()) as DanmakuCommentsResponse;
@@ -220,6 +280,7 @@ export interface DanmakuMemory {
   animeTitle: string;
   episodeTitle: string;
   timestamp: number;
+  searchKeyword?: string; // 用户手动搜索时使用的关键词
 }
 
 // 保存弹幕选择记忆
@@ -228,7 +289,8 @@ export function saveDanmakuMemory(
   animeId: number,
   episodeId: number,
   animeTitle: string,
-  episodeTitle: string
+  episodeTitle: string,
+  searchKeyword?: string // 可选的搜索关键词
 ): void {
   if (typeof window === 'undefined') return;
 
@@ -240,6 +302,7 @@ export function saveDanmakuMemory(
       animeTitle,
       episodeTitle,
       timestamp: Date.now(),
+      searchKeyword, // 保存搜索关键词
     };
 
     // 获取现有的记忆

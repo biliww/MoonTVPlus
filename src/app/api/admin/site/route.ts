@@ -42,6 +42,23 @@ export async function POST(request: NextRequest) {
       DanmakuApiBase,
       DanmakuApiToken,
       EnableComments,
+      CustomAdFilterCode,
+      CustomAdFilterVersion,
+      EnableRegistration,
+      RegistrationRequireTurnstile,
+      LoginRequireTurnstile,
+      TurnstileSiteKey,
+      TurnstileSecretKey,
+      DefaultUserTags,
+      EnableOIDCLogin,
+      EnableOIDCRegistration,
+      OIDCIssuer,
+      OIDCAuthorizationEndpoint,
+      OIDCTokenEndpoint,
+      OIDCUserInfoEndpoint,
+      OIDCClientId,
+      OIDCClientSecret,
+      OIDCButtonText,
     } = body as {
       SiteName: string;
       Announcement: string;
@@ -56,6 +73,23 @@ export async function POST(request: NextRequest) {
       DanmakuApiBase: string;
       DanmakuApiToken: string;
       EnableComments: boolean;
+      CustomAdFilterCode?: string;
+      CustomAdFilterVersion?: number;
+      EnableRegistration?: boolean;
+      RegistrationRequireTurnstile?: boolean;
+      LoginRequireTurnstile?: boolean;
+      TurnstileSiteKey?: string;
+      TurnstileSecretKey?: string;
+      DefaultUserTags?: string[];
+      EnableOIDCLogin?: boolean;
+      EnableOIDCRegistration?: boolean;
+      OIDCIssuer?: string;
+      OIDCAuthorizationEndpoint?: string;
+      OIDCTokenEndpoint?: string;
+      OIDCUserInfoEndpoint?: string;
+      OIDCClientId?: string;
+      OIDCClientSecret?: string;
+      OIDCButtonText?: string;
     };
 
     // 参数校验
@@ -72,7 +106,24 @@ export async function POST(request: NextRequest) {
       typeof FluidSearch !== 'boolean' ||
       typeof DanmakuApiBase !== 'string' ||
       typeof DanmakuApiToken !== 'string' ||
-      typeof EnableComments !== 'boolean'
+      typeof EnableComments !== 'boolean' ||
+      (CustomAdFilterCode !== undefined && typeof CustomAdFilterCode !== 'string') ||
+      (CustomAdFilterVersion !== undefined && typeof CustomAdFilterVersion !== 'number') ||
+      (EnableRegistration !== undefined && typeof EnableRegistration !== 'boolean') ||
+      (RegistrationRequireTurnstile !== undefined && typeof RegistrationRequireTurnstile !== 'boolean') ||
+      (LoginRequireTurnstile !== undefined && typeof LoginRequireTurnstile !== 'boolean') ||
+      (TurnstileSiteKey !== undefined && typeof TurnstileSiteKey !== 'string') ||
+      (TurnstileSecretKey !== undefined && typeof TurnstileSecretKey !== 'string') ||
+      (DefaultUserTags !== undefined && !Array.isArray(DefaultUserTags)) ||
+      (EnableOIDCLogin !== undefined && typeof EnableOIDCLogin !== 'boolean') ||
+      (EnableOIDCRegistration !== undefined && typeof EnableOIDCRegistration !== 'boolean') ||
+      (OIDCIssuer !== undefined && typeof OIDCIssuer !== 'string') ||
+      (OIDCAuthorizationEndpoint !== undefined && typeof OIDCAuthorizationEndpoint !== 'string') ||
+      (OIDCTokenEndpoint !== undefined && typeof OIDCTokenEndpoint !== 'string') ||
+      (OIDCUserInfoEndpoint !== undefined && typeof OIDCUserInfoEndpoint !== 'string') ||
+      (OIDCClientId !== undefined && typeof OIDCClientId !== 'string') ||
+      (OIDCClientSecret !== undefined && typeof OIDCClientSecret !== 'string') ||
+      (OIDCButtonText !== undefined && typeof OIDCButtonText !== 'string')
     ) {
       return NextResponse.json({ error: '参数格式错误' }, { status: 400 });
     }
@@ -105,6 +156,23 @@ export async function POST(request: NextRequest) {
       DanmakuApiBase,
       DanmakuApiToken,
       EnableComments,
+      CustomAdFilterCode,
+      CustomAdFilterVersion,
+      EnableRegistration,
+      RegistrationRequireTurnstile,
+      LoginRequireTurnstile,
+      TurnstileSiteKey,
+      TurnstileSecretKey,
+      DefaultUserTags,
+      EnableOIDCLogin,
+      EnableOIDCRegistration,
+      OIDCIssuer,
+      OIDCAuthorizationEndpoint,
+      OIDCTokenEndpoint,
+      OIDCUserInfoEndpoint,
+      OIDCClientId,
+      OIDCClientSecret,
+      OIDCButtonText,
     };
 
     // 写入数据库
