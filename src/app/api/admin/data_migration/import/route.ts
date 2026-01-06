@@ -80,19 +80,93 @@ export async function POST(req: NextRequest) {
     // 开始导入数据 - 先清空现有数据
     await db.clearAllData();
 
+    // 额外清除所有V2用户（clearAllData可能只清除旧版用户）
+    const existingUsers = await db.getUserListV2(0, 1000000, process.env.USERNAME);
+    for (const user of existingUsers.users) {
+      await db.deleteUserV2(user.username);
+    }
+    console.log(`已清除 ${existingUsers.users.length} 个现有V2用户`);
+
     // 导入管理员配置
     importData.data.adminConfig = configSelfCheck(importData.data.adminConfig);
     await db.saveAdminConfig(importData.data.adminConfig);
     await setCachedConfig(importData.data.adminConfig);
 
-    // 导入用户数据
+    // 清除短剧视频源缓存（因为导入的配置可能包含不同的视频源）
+    try {
+      await db.deleteGlobalValue('duanju');
+      console.log('已清除短剧视频源缓存');
+    } catch (error) {
+      console.error('清除短剧视频源缓存失败:', error);
+      // 不影响主流程，继续执行
+    }
+
+    // 导入用户数据和user:info
     const userData = importData.data.userData;
+    const storage = (db as any).storage;
+    const usersV2Map = new Map((importData.data.usersV2 || []).map((u: any) => [u.username, u]));
+
+    const userCount = Object.keys(userData).length;
+    console.log(`准备导入 ${userCount} 个用户的数据`);
+
+    let importedCount = 0;
     for (const username in userData) {
       const user = userData[username];
 
-      // 重新注册用户（包含密码）
-      if (user.password) {
-        await db.registerUser(username, user.password);
+      // 为所有有passwordV2的用户创建user:info
+      if (user.passwordV2) {
+        const userV2 = usersV2Map.get(username) as any;
+
+        // 确定角色：站长为owner，其他用户从usersV2获取或默认为user
+        let role: 'owner' | 'admin' | 'user' = 'user';
+        if (username === process.env.USERNAME) {
+          role = 'owner';
+        } else if (userV2) {
+          role = userV2.role === 'owner' ? 'user' : userV2.role;
+        }
+
+        const createdAt = userV2?.created_at || Date.now();
+
+        // 直接设置用户信息（不经过createUserV2，避免密码被再次hash）
+        const userInfoKey = `user:${username}:info`;
+        const userInfo: Record<string, string> = {
+          role,
+          banned: String(userV2?.banned || false),
+          password: user.passwordV2, // 已经是hash过的密码，直接使用
+          created_at: createdAt.toString(),
+        };
+
+        if (userV2?.tags && userV2.tags.length > 0) {
+          userInfo.tags = JSON.stringify(userV2.tags);
+        }
+
+        if (userV2?.oidcSub) {
+          userInfo.oidcSub = userV2.oidcSub;
+        }
+
+        if (userV2?.enabledApis && userV2.enabledApis.length > 0) {
+          userInfo.enabledApis = JSON.stringify(userV2.enabledApis);
+        }
+
+        // 使用storage.withRetry直接设置用户信息
+        await storage.withRetry(() => storage.client.hSet(userInfoKey, userInfo));
+
+        // 添加到用户列表
+        await storage.withRetry(() => storage.client.zAdd('user:list', {
+          score: createdAt,
+          value: username,
+        }));
+
+        // 如果有oidcSub，创建映射
+        if (userV2?.oidcSub) {
+          const oidcSubKey = `oidc:sub:${userV2.oidcSub}`;
+          await storage.withRetry(() => storage.client.set(oidcSubKey, username));
+        }
+
+        importedCount++;
+        console.log(`用户 ${username} 导入成功`);
+      } else {
+        console.log(`跳过用户 ${username}：没有passwordV2`);
       }
 
       // 导入播放记录
@@ -127,9 +201,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    console.log(`成功导入 ${importedCount} 个用户的user:info`);
+
     return NextResponse.json({
       message: '数据导入成功',
       importedUsers: Object.keys(userData).length,
+      importedUsersV2: importData.data.usersV2?.length || 0,
       timestamp: importData.timestamp,
       serverVersion: typeof importData.serverVersion === 'string' ? importData.serverVersion : '未知版本'
     });

@@ -291,6 +291,10 @@ const DownloadEpisodeSelector: React.FC<DownloadEpisodeSelectorProps> = ({
                     if (!title) {
                       return episodeNumber;
                     }
+                    // 如果是 OVA 格式，直接返回完整标题
+                    if (title.match(/^OVA\s+\d+/i)) {
+                      return title;
+                    }
                     // 如果匹配"第X集"、"第X话"、"X集"、"X话"格式，提取中间的数字
                     const match = title.match(/(?:第)?(\d+)(?:集|话)/);
                     if (match) {

@@ -63,6 +63,45 @@ export async function GET(request: NextRequest) {
 
     console.log('TVBOX 订阅 baseUrl:', baseUrl, 'adFilter:', adFilter);
 
+    // 检查是否配置了 OpenList
+    const hasOpenList = !!(
+      config.OpenListConfig?.Enabled &&
+      config.OpenListConfig?.URL &&
+      config.OpenListConfig?.Username &&
+      config.OpenListConfig?.Password
+    );
+
+    // 检查是否配置了 Emby
+    const hasEmby = !!(
+      config.EmbyConfig?.Enabled &&
+      config.EmbyConfig?.ServerURL &&
+      (config.EmbyConfig?.ApiKey || (config.EmbyConfig?.Username && config.EmbyConfig?.Password))
+    );
+
+    // 构建 OpenList 站点配置
+    const openlistSites = hasOpenList ? [{
+      key: 'openlist',
+      name: '私人影库',
+      type: 1,
+      api: `${baseUrl}/api/openlist/cms-proxy/${encodeURIComponent(subscribeToken)}`,
+      searchable: 1,
+      quickSearch: 1,
+      filterable: 1,
+      ext: '',
+    }] : [];
+
+    // 构建 Emby 站点配置
+    const embySites = hasEmby ? [{
+      key: 'emby',
+      name: 'Emby媒体库',
+      type: 1,
+      api: `${baseUrl}/api/emby/cms-proxy/${encodeURIComponent(subscribeToken)}`,
+      searchable: 1,
+      quickSearch: 1,
+      filterable: 1,
+      ext: '',
+    }] : [];
+
     // 构建TVBOX订阅数据
     const tvboxSubscription = {
       // 站点配置
@@ -70,19 +109,24 @@ export async function GET(request: NextRequest) {
       wallpaper: '',
 
       // 视频源站点 - 根据 adFilter 参数决定是否使用代理
-      sites: apiSites.map(site => ({
-        key: site.key,
-        name: site.name,
-        type: 1,
-        // 如果开启去广告，使用 CMS 代理；否则使用原始 API
-        api: adFilter
-          ? `${baseUrl}/api/cms-proxy?api=${encodeURIComponent(site.api)}`
-          : site.api,
-        searchable: 1,
-        quickSearch: 1,
-        filterable: 1,
-        ext: site.detail || '',
-      })),
+      // OpenList 和 Emby 源放在最前面
+      sites: [
+        ...openlistSites,
+        ...embySites,
+        ...apiSites.map(site => ({
+          key: site.key,
+          name: site.name,
+          type: 1,
+          // 如果开启去广告，使用 CMS 代理；否则使用原始 API
+          api: adFilter
+            ? `${baseUrl}/api/cms-proxy?api=${encodeURIComponent(site.api)}`
+            : site.api,
+          searchable: 1,
+          quickSearch: 1,
+          filterable: 1,
+          ext: site.detail || '',
+        }))
+      ],
 
       // 直播源
       lives: await Promise.all(
@@ -100,6 +144,7 @@ export async function GET(request: NextRequest) {
             return {
               name: live.name,
               type: 0,
+              playerType: 1,
               url: live.url,
               epg: live.epg || '',
               logo: '',

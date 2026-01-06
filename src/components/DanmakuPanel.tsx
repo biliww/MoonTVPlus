@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getEpisodes, searchAnime } from '@/lib/danmaku/api';
 import type {
   DanmakuAnime,
+  DanmakuComment,
   DanmakuEpisode,
   DanmakuSelection,
 } from '@/lib/danmaku/types';
@@ -15,6 +16,7 @@ interface DanmakuPanelProps {
   currentEpisodeIndex: number;
   onDanmakuSelect: (selection: DanmakuSelection) => void;
   currentSelection: DanmakuSelection | null;
+  onUploadDanmaku?: (comments: DanmakuComment[]) => void;
 }
 
 export default function DanmakuPanel({
@@ -22,6 +24,7 @@ export default function DanmakuPanel({
   currentEpisodeIndex,
   onDanmakuSelect,
   currentSelection,
+  onUploadDanmaku,
 }: DanmakuPanelProps) {
   const [searchKeyword, setSearchKeyword] = useState('');
   const [searchResults, setSearchResults] = useState<DanmakuAnime[]>([]);
@@ -31,6 +34,7 @@ export default function DanmakuPanel({
   const [isLoadingEpisodes, setIsLoadingEpisodes] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const initializedRef = useRef(false); // 标记是否已初始化过
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // 搜索弹幕
   const handleSearch = useCallback(async (keyword: string) => {
@@ -51,7 +55,7 @@ export default function DanmakuPanel({
       } else {
         setSearchResults([]);
         setSearchError(
-          response.errorMessage || '未找到匹配的动漫，请尝试其他关键词'
+          response.errorMessage || '未找到匹配的剧集，请尝试其他关键词'
         );
       }
     } catch (error) {
@@ -75,7 +79,7 @@ export default function DanmakuPanel({
         setEpisodes(response.bangumi.episodes);
       } else {
         setEpisodes([]);
-        setSearchError('该动漫暂无剧集信息');
+        setSearchError('该剧集暂无弹幕信息');
       }
     } catch (error) {
       console.error('获取剧集失败:', error);
@@ -118,6 +122,38 @@ export default function DanmakuPanel({
     [currentSelection]
   );
 
+  // 处理文件上传
+  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.xml')) {
+      setSearchError('请上传XML格式的弹幕文件');
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const { parseXmlDanmaku } = await import('@/lib/danmaku/xml-parser');
+      const comments = parseXmlDanmaku(text);
+
+      if (comments.length === 0) {
+        setSearchError('弹幕文件解析失败或文件为空');
+        return;
+      }
+
+      onUploadDanmaku?.(comments);
+      setSearchError(null);
+    } catch (error) {
+      console.error('上传弹幕失败:', error);
+      setSearchError('弹幕文件解析失败');
+    } finally {
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [onUploadDanmaku]);
+
   // 当视频标题首次加载时，初始化搜索关键词（仅执行一次）
   useEffect(() => {
     if (videoTitle && !initializedRef.current) {
@@ -128,7 +164,7 @@ export default function DanmakuPanel({
 
   return (
     <div className='flex h-full flex-col overflow-hidden'>
-      {/* 搜索区域 */}
+      {/* 搜索区域 - 固定在顶部 */}
       <div className='mb-4 flex-shrink-0'>
         <div className='flex gap-2'>
           <input
@@ -140,7 +176,7 @@ export default function DanmakuPanel({
                 handleSearch(searchKeyword);
               }
             }}
-            placeholder='输入动漫名称搜索弹幕...'
+            placeholder='输入剧集名称搜索弹幕...'
             autoComplete='off'
             autoCorrect='off'
             autoCapitalize='off'
@@ -174,10 +210,23 @@ export default function DanmakuPanel({
           </button>
         </div>
 
+        {/* 错误提示 */}
+        {searchError && (
+          <div
+            className='mt-3 rounded-lg border border-red-500/30 bg-red-500/10
+                        px-3 py-2 text-sm text-red-600 dark:text-red-400'
+          >
+            {searchError}
+          </div>
+        )}
+      </div>
+
+      {/* 可滚动内容区域 */}
+      <div className='flex-1 overflow-y-auto min-h-0'>
         {/* 当前选择的弹幕信息 */}
         {currentSelection && (
           <div
-            className='mt-3 rounded-lg border border-green-500/30 bg-green-500/10
+            className='mb-4 rounded-lg border border-green-500/30 bg-green-500/10
                         px-3 py-2 text-sm'
           >
             <p className='font-semibold text-green-600 dark:text-green-400'>
@@ -192,19 +241,8 @@ export default function DanmakuPanel({
           </div>
         )}
 
-        {/* 错误提示 */}
-        {searchError && (
-          <div
-            className='mt-3 rounded-lg border border-red-500/30 bg-red-500/10
-                        px-3 py-2 text-sm text-red-600 dark:text-red-400'
-          >
-            {searchError}
-          </div>
-        )}
-      </div>
-
-      {/* 内容区域 */}
-      <div className='flex-1 overflow-y-auto min-h-0'>
+        {/* 内容区域 */}
+        <div>
         {/* 显示剧集列表 */}
         {selectedAnime && (
           <div className='space-y-2'>
@@ -361,11 +399,43 @@ export default function DanmakuPanel({
           <div className='flex flex-col items-center justify-center py-12 text-center'>
             <MagnifyingGlassIcon className='mb-3 h-12 w-12 text-gray-400' />
             <p className='text-sm text-gray-500 dark:text-gray-400'>
-              输入动漫名称搜索弹幕
+              输入剧集名称搜索弹幕
             </p>
           </div>
         )}
+        </div>
+
+        {/* 上传弹幕区域 - 移动端：在滚动容器内 */}
+        {onUploadDanmaku && (
+          <div className='mt-3 border-t border-gray-200 pt-3 dark:border-gray-700 md:hidden'>
+            <input
+              ref={fileInputRef}
+              type='file'
+              accept='.xml'
+              onChange={handleFileUpload}
+              className='hidden'
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className='w-full text-center text-xs text-gray-500 dark:text-gray-400 hover:text-green-500 dark:hover:text-green-400 transition-colors py-2'
+            >
+              搜不到想要的弹幕？自行上传
+            </button>
+          </div>
+        )}
       </div>
+
+      {/* 上传弹幕区域 - PC端：固定在底部 */}
+      {onUploadDanmaku && (
+        <div className='mt-3 flex-shrink-0 border-t border-gray-200 pt-3 dark:border-gray-700 hidden md:block'>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className='w-full text-center text-xs text-gray-500 dark:text-gray-400 hover:text-green-500 dark:hover:text-green-400 transition-colors py-2'
+          >
+            搜不到想要的弹幕？自行上传
+          </button>
+        </div>
+      )}
     </div>
   );
 }

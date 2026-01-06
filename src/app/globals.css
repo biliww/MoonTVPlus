@@ -2,6 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/* NProgress 进度条样式 */
+#nprogress {
+  pointer-events: none;
+}
+
+#nprogress .bar {
+  background: #3b82f6;
+  position: fixed;
+  z-index: 9999;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.8), 0 0 5px rgba(59, 130, 246, 0.6);
+}
+
+#nprogress .peg {
+  display: block;
+  position: absolute;
+  right: 0px;
+  width: 100px;
+  height: 100%;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.8), 0 0 5px rgba(59, 130, 246, 0.6);
+  opacity: 1.0;
+  transform: rotate(3deg) translate(0px, -4px);
+}
+
+/* 暗色模式下的进度条样式 */
+.dark #nprogress .bar {
+  background: #60a5fa;
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.8), 0 0 5px rgba(96, 165, 250, 0.6);
+}
+
+.dark #nprogress .peg {
+  box-shadow: 0 0 10px rgba(96, 165, 250, 0.8), 0 0 5px rgba(96, 165, 250, 0.6);
+}
+
 @layer utilities {
   .scrollbar-hide {
     -ms-overflow-style: none; /* IE and Edge */
