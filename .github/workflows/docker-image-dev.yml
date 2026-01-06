@@ -11,7 +11,7 @@ on:
         type: string
   push:
     # 监听 dev 分支的推送
-    branches: [ dev ]
+    branches: [ main-my ]
   # 取消了 pull_request 触发，因为它通常不应该触发构建和推送镜像的操作
   # 如果确实需要，可以重新加回来
   # pull_request:

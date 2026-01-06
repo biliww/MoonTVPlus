@@ -3,7 +3,7 @@
 
 
 配置
-Upstash
+Upstash (14天不使用 会自动删除)
 
 
 USERNAME=admin
@@ -17,3 +17,6 @@ https://guided-feline-36452.upstash.io
 
 
 pnpm run dev
+
+
+http://localhost:3000/
