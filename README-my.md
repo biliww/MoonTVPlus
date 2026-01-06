@@ -13,3 +13,7 @@ UPSTASH_URL=https://guided-feline-36452.upstash.io
 UPSTASH_TOKEN=AY5kAAIncDE0ZjJjZGE0YjhiZmU0NzYwODk4ZDdiMmZkMDNjODJhZHAxMzY0NTI
 
 https://guided-feline-36452.upstash.io
+
+
+
+pnpm run dev
